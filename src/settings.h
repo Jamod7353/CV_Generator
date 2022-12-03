@@ -1,0 +1,1 @@
+#define PIN_POSSIBILITY A7
