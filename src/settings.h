@@ -1,1 +1,3 @@
 #define PIN_POSSIBILITY A7
+#define PIN_RANGE A6
+#define PIN_CV_INPUT A5
