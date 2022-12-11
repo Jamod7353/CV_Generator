@@ -1,6 +1,13 @@
 #include <Arduino.h>
+#include <Adafruit_MCP4725.h>
+#include <Wire.h>
 #include "scales.h"
 #include "settings.h"
+
+#define MCP4725_1 0x61
+#define MCP4725_2 0x60 //TODO oder 62?
+byte buffer[3];
+unsigned int adc;
 
 byte range_semitones;
 #define NUM_OF_STEPS 8
@@ -64,12 +71,26 @@ void generateNextStep(){
     scale_pointer = (scale_pointer - 1) % range_semitones; // TODO: check negative modulo 
     value_out = picked_scale.values[scale_pointer % picked_scale.length] + 12 * scale_pointer / picked_scale.length;
   } else if(play_mode == INPUT){
-    byte tone = map(analogRead(PIN_CV_INPUT), 0, 1023, 0, 5*picked_scale.length);
+    byte tone = map(analogRead(PIN_CV_INPUT1), 0, 1023, 0, 5*picked_scale.length);
     value_out = picked_scale.values[tone % picked_scale.length] + 12 * tone / picked_scale.length;
   }
 }
+
 void writeVoltage(){
-  // TODO: DAC implementieren
+  // TODO: Testen
+  buffer[0] = 0b01000000;
+  adc = value_out; // TODO richtige Formel!
+  // O/P Voltage = (Reference Voltage / Resolution) x Digital Value
+  // O/P Voltage = (5/ 4096) x 2048 = 2.5V
+  float ipvolt = (5.0/4096.0)*adc;
+  buffer[1] = adc >> 4;
+  buffer[2] = adc << 4;
+
+  Wire.beginTransmission(MCP4725_1);
+  Wire.write(buffer[0]);
+  Wire.write(buffer[1]);
+  Wire.write(buffer[2]);
+  Wire.endTransmission();
 }
 
 void setup() {
@@ -81,6 +102,7 @@ void setup() {
   for(int i=0; i<NUM_OF_STEPS; i++){
     random_steps[i] = getRandomNote();
   }
+  Wire.begin(); // begins I2C communication
 }
 
 void loop() {
@@ -89,5 +111,3 @@ void loop() {
 
 //TODO: Interrupt Methode
 // bei raise von Input oder bei eigener clock
-// writeVoltage()
-// generateNextStep()
