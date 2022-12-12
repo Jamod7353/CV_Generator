@@ -1,13 +1,16 @@
 #include <Arduino.h>
 #include <Adafruit_MCP4725.h>
 #include <Wire.h>
+#include <Encoder.h>
 #include "scales.h"
 #include "settings.h"
 
 #define MCP4725_1 0x61
-#define MCP4725_2 0x60 //TODO oder 62?
+#define MCP4725_2 0x60 //TODO 60 oder 62?
 byte buffer[3];
 unsigned int adc;
+Encoder enc(PIN_ENC_1, PIN_ENC_2);
+long encPosition = -999;
 
 byte range_semitones;
 #define NUM_OF_STEPS 8
@@ -27,7 +30,14 @@ byte possibility_AVG_pointer = 0;
 #define DOWN 1
 #define RANDOM 2
 #define INPUT 3
+// TODO: more modes (slightly up/down (random -2 to +3))
 byte play_mode;
+
+#define CLK_MODE 0
+#define TRIG_MODE 1
+byte timer_mode;
+
+int countsToInterrupt = 36690;
 
 byte value_out; //calculated value -> to scale in volt: value*1/12
 
@@ -41,6 +51,13 @@ unsigned int avg(unsigned int array[]){
   return round(value);
 }
 
+void updateEncoder(){
+  long newPosition = enc.read();
+  if(newPosition != encPosition){
+    encPosition = newPosition;
+  }
+}
+
 void updateControls(){
   // read and flattern poti values
   range_AVG[range_AVG_pointer] = (unsigned int) map(analogRead(PIN_RANGE), 0, 1023, 0, 5*picked_scale.length);
@@ -49,6 +66,15 @@ void updateControls(){
   possibility_AVG[possibility_AVG_pointer] = (unsigned int) analogRead(PIN_POSSIBILITY);
   possibility_AVG_pointer = ++possibility_AVG_pointer % AVG_LENGTH;
   possibility = avg(possibility_AVG);
+
+  timer_mode = CLK_MODE; // TODO: Switch
+
+  updateEncoder(); // mach was damit... TODO
+
+  /* set bpm
+    float tmp = (65536 - 3750000.0/bpm);
+    countsToInterrupt = (int) tmp;
+  */
 }
 
 byte getRandomNote(){
@@ -76,7 +102,7 @@ void generateNextStep(){
   }
 }
 
-void writeVoltage(){
+void writeVoltage(int output){
   // TODO: Testen
   buffer[0] = 0b01000000;
   adc = value_out; // TODO richtige Formel!
@@ -86,11 +112,26 @@ void writeVoltage(){
   buffer[1] = adc >> 4;
   buffer[2] = adc << 4;
 
-  Wire.beginTransmission(MCP4725_1);
+  if(output == 1){
+    Wire.beginTransmission(MCP4725_1);
+  } else{
+    Wire.beginTransmission(MCP4725_2);
+  }
+  
   Wire.write(buffer[0]);
   Wire.write(buffer[1]);
   Wire.write(buffer[2]);
   Wire.endTransmission();
+}
+
+// Input signal interrupt method
+void play_tone1(){
+  // TODO: implementieren ?
+  writeVoltage(1);
+  generateNextStep();
+}
+void play_tone2(){
+  writeVoltage(2);
 }
 
 void setup() {
@@ -103,10 +144,26 @@ void setup() {
     random_steps[i] = getRandomNote();
   }
   Wire.begin(); // begins I2C communication
+  attachInterrupt(digitalPinToInterrupt(PIN_CLK_INPUT1), play_tone1, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(PIN_CLK_INPUT2), play_tone2, CHANGE);
+
+  noInterrupts();
+  TCCR1A = 0;
+  TCNT1 = 0;
+  TCCR1B |= (1 << CS12);  // prescale 256
+  TIMSK1 |= (1 << TOIE1);
+  interrupts();
 }
 
 void loop() {
   updateControls();
+}
+
+ISR(TIMER1_OVF_vect){
+  TCNT1 = countsToInterrupt;
+  // TODO: implementieren ?
+  writeVoltage(1);
+  generateNextStep();
 }
 
 //TODO: Interrupt Methode
