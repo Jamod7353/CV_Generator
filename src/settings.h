@@ -14,7 +14,10 @@
 #define PIN_TRIG1 2
 #define PIN_TRIG2 3
 
+// rotary encoder
 #define PIN_ENC_1 4
 #define PIN_ENC_2 5
+
+#define PIN_MENU_TRIGGER 6
 
 // TODO: trigger menu/option/channel
