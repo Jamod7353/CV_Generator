@@ -1,24 +1,60 @@
 #include <Arduino.h>
-#include <Adafruit_MCP4725.h>
 #include <Wire.h>
+#define ENCODER_DO_NOT_USE_INTERRUPTS
 #include <Encoder.h>
+#include <Adafruit_MCP4725.h>
 #include <Bounce2.h>
 #include "scales.h"
 #include "settings.h"
+#include "screen.h"
 
+int16_t debugVar = 0; // TODO: löschen
+
+// DAC (I2C)
 #define MCP4725_0 0x60
-#define MCP4725_1 0x61 //TODO 60 oder 62?
+#define MCP4725_1 0x61 //TODO 60 oder 62? -> löten!
 Adafruit_MCP4725 dac0;
 Adafruit_MCP4725 dac1;
-byte buffer[3];
+
+// Encoder
 Encoder enc(PIN_ENC_0, PIN_ENC_1);
 long encPosition = -999;
 
+// Buttons
+#define SET_MENU 0
+#define ROTARY_BUTTON 1
+#define SEQ_0 2
+#define SEQ_1 3
+#define NUM_OF_BUTTONS 4
+Bounce *b = new Bounce[NUM_OF_BUTTONS];
+// TODO: record-button + alles andere!
+
+// Menu
+boolean seq_0 = false;
+boolean seq_1 = false;
+#define PLAY_MODE 0
+#define RANGE 1
+#define SCALE 2
+#define POSSIBILIY 3
+#define TIMER_MODE 4
+#define SPEED 5
+#define SHIFT 6
+#define MENU_NUMBER 7
+byte menu_number = PLAY_MODE;
+long encPos_tmp;
+long menuValue;
+#define CLK_MODE 0
+#define TRIG_MODE 1
+byte timer_mode[2];
+
+// Play Control
+byte value_tone[2] = {0, 0}; //calculated value -> to scale in volt: value*1/12
 #define NUM_OF_STEPS 16  // Array length for random/record
 byte range_semitones[2] = {NUM_OF_STEPS, NUM_OF_STEPS};
 byte random_steps0[NUM_OF_STEPS];
 byte random_steps1[NUM_OF_STEPS];
 byte random_step_pointer[2] = {0, 0};
+#define MAX_POSSIBILITY 100
 int possibility[2] = {0, 0}; // value 0-1023
 byte scale_pointer[2] = {0, 0};
 scale picked_scale[2] = {scales[0], scales[0]};
@@ -30,18 +66,15 @@ scale picked_scale[2] = {scales[0], scales[0]};
 #define SLOWLY_DOWN 4
 #define SLOWLY_BOUNCE 5
 #define INPUT 6
-// TODO: more modes (slightly up/down (random -2 to +3))
+#define PLAYMODE_NUMBER 7
 byte play_mode[2];
-
-#define CLK_MODE 0
-#define TRIG_MODE 1
-byte timer_mode[2] = {1, 1}; // TODO: Wert initialisieren und hier löschen
 boolean stepMarked[2] = {false, false};
 
+// Clock
 long timeForNextStep;
-int millisToInterrupt = 462; // 60000/bpm (130 bpm)
-
-byte value_tone[2] = {0, 0}; //calculated value -> to scale in volt: value*1/12
+int millisToInterrupt;
+#define MAX_BPM 520
+int16_t bpm;
 
 void updateEncoder(){
   long newPosition = enc.read();
@@ -53,13 +86,115 @@ void updateEncoder(){
 void updateControls(){
   timer_mode[0] = CLK_MODE; // TODO: Switch
 
-  updateEncoder(); // mach was damit... TODO
+  for(int i=0; i<NUM_OF_BUTTONS; i++){
+    b[i].update();
+  }
+  if(b[SEQ_0].fell()){
+    seq_0 = !seq_0;
+  }
+  if(b[SEQ_1].fell()){
+    seq_1 = !seq_1;
+  }
+  if(b[SET_MENU].fell()){
+    menu_number = ++menu_number % MENU_NUMBER;
+    encPos_tmp = encPosition;
+  }
 
-  /* set bpm TODO: neue Formel...
-    bpm = ...;
-    float tmp = 60000/bpm;
-    millisToInterrupt = (int) tmp;
-  */
+  updateEncoder();
+
+  // TODO: negative Werte umrechnen! + WertModulo
+  // calculate actual value
+  if(menu_number == PLAY_MODE){
+    menuValue = ((encPosition - encPos_tmp)/4) % PLAYMODE_NUMBER;
+  } else if(menu_number == RANGE){
+    if(seq_1 && !seq_0){
+      menuValue = (range_semitones[1] + (encPosition - encPos_tmp)/4) % NUM_OF_STEPS;
+    } else {
+      menuValue = (range_semitones[0] + (encPosition - encPos_tmp)/4) % NUM_OF_STEPS;
+    }
+  } else if(menu_number == SCALE){
+    ((encPosition - encPos_tmp)/4) % sizeof(scale); // TODO: prüfen!
+  } else if(menu_number == POSSIBILIY){
+    if(seq_1 && !seq_0){
+      menuValue = (possibility[1] + (encPosition - encPos_tmp)/4) % MAX_POSSIBILITY;
+    } else {
+      menuValue = (possibility[0] + (encPosition - encPos_tmp)/4) % MAX_POSSIBILITY;
+    }
+  } else if(menu_number == TIMER_MODE){
+    menuValue = (encPosition/4) % 2;
+  } else if(menu_number == SPEED){
+    menuValue = (bpm + (encPosition - encPos_tmp)/4) % MAX_BPM;
+  } else if(menu_number == SHIFT){
+    menuValue = ((encPosition - encPos_tmp)/4) % NUM_OF_STEPS;
+  } else{
+    menu_number = 0;
+    menuValue = 0;
+  }
+
+  if(b[ROTARY_BUTTON].fell()){ // set calculated value
+    if(menu_number == PLAY_MODE){
+      if(seq_1 && !seq_0){
+        play_mode[1] = menuValue;
+      } else {
+        play_mode[0] = menuValue;
+      }
+    } else if(menu_number == RANGE){
+      if(seq_1 && !seq_0){
+        range_semitones[1] = menuValue;
+      } else {
+        range_semitones[0] = menuValue;
+      }
+    } else if(menu_number == SCALE){
+       if(seq_1 && !seq_0){
+        picked_scale[1] = scales[menuValue];
+        scale_pointer[1] = 0;
+      } else {
+        picked_scale[0] = scales[menuValue];
+        scale_pointer[0] = 0;        
+      }     
+    } else if(menu_number == POSSIBILIY){
+      if(seq_1 && !seq_0){
+        possibility[1] = menuValue;
+      } else {
+        possibility[0] = menuValue;
+      }
+    } else if(menu_number == TIMER_MODE){
+      if(seq_1 && !seq_0){
+        timer_mode[1] = menuValue;
+      } else {
+        timer_mode[0] = menuValue;
+      }
+    } else if(menu_number == SPEED){
+      bpm = menuValue;
+      millisToInterrupt = round(60000.0/bpm);
+    } else if(menu_number == SHIFT){
+      if(seq_1 && !seq_0){
+        random_step_pointer[1] += menuValue;
+      } else {
+        random_step_pointer[0] += menuValue;
+      }
+    }
+  }
+}
+
+void buildScreen(){
+  if(menu_number == PLAY_MODE){
+    printScreen(menuValue, SCR_NUMBER);
+  } else if(menu_number == RANGE){
+    printScreen(menuValue, SCR_NUMBER);
+  } else if(menu_number == SCALE){
+    printScreen(menuValue, SCR_NUMBER);
+  } else if(menu_number == POSSIBILIY){
+    byte val = map(menuValue, 0, MAX_POSSIBILITY, 0, 15);
+    printScreen(val, SCR_RAISE);
+  } else if(menu_number == TIMER_MODE){
+    printScreen(menuValue, SCR_TIMER);
+  } else if(menu_number == SPEED){
+    byte val = map(menuValue, 0, MAX_BPM, 0, 15);
+    printScreen(val, SCR_RAISE);
+  } else if(menu_number == SHIFT){
+    printScreen(menuValue, SCR_NUMBER);
+  }
 }
 
 byte getRandomNote(byte channel){
@@ -100,12 +235,11 @@ byte getRandomDiff(){
     return diff;
 }
 
-void generateNextStep(byte channel){ // TODO: Separater Step für output 2
+void generateNextStep(byte channel){
   // set value_out
-
   if(play_mode[channel] == RANDOM){
     random_step_pointer[channel] = (random_step_pointer[channel] + 1) % NUM_OF_STEPS;
-    if(random(0, 1023) <= possibility[channel]){
+    if(random(0, MAX_POSSIBILITY) <= possibility[channel]){
       if(channel == 0){
         random_steps0[random_step_pointer[channel]] = getRandomNote(channel);
         value_tone[channel] = random_steps0[random_step_pointer[channel]];
@@ -147,23 +281,22 @@ void generateNextStep(byte channel){ // TODO: Separater Step für output 2
   else if(play_mode[channel] == INPUT){
     byte tone = 0;
     if(channel == 0){
-      tone = map(analogRead(PIN_CV_INPUT0), 0, 1023, 0, 5*picked_scale[channel].length);
+      tone = map(analogRead(PIN_CV_INPUT_0), 0, 1023, 0, 5*picked_scale[channel].length);
     } else {
-      tone = map(analogRead(PIN_CV_INPUT1), 0, 1023, 0, 5*picked_scale[channel].length);
+      tone = map(analogRead(PIN_CV_INPUT_1), 0, 1023, 0, 5*picked_scale[channel].length);
     }
     value_tone[channel] = picked_scale[channel].values[tone % picked_scale[channel].length] + 12 * (tone / picked_scale[channel].length);
   }
 }
 
 void writeVoltage(byte channel){
-  // O/P Voltage = (Reference Voltage / Resolution) x Digital Value
-  // O/P Voltage = (5/ 4096) x 2048 = 2.5V
   unsigned int value_write = round(value_tone[channel]*1024/15.0); // *4096 for dac-scale, :5 for 5v, :12 for 12 semitones per octave
   
   if(channel == 0)
     dac0.setVoltage(value_write, false);
   else
     dac1.setVoltage(value_write, false);
+
   stepMarked[channel] = false;
 }
 
@@ -183,38 +316,109 @@ void play_tone1(){
   }
 }
 
+void initControls(){
+  bpm = 130;
+  millisToInterrupt = 462; // 60000/bpm (130 bpm)
+
+  play_mode[0] = UP;
+  timer_mode[0] = TRIG_MODE;
+  picked_scale[0] = scales[1];
+  range_semitones[0] = 8;
+  possibility[0] = 100;
+  
+  play_mode[1] = RANDOM;
+  timer_mode[1] = TRIG_MODE;
+  picked_scale[1] = scales[1];
+  range_semitones[1] = 8;
+  possibility[1] = 0;
+}
+
 void setup() {
   Serial.begin(9600);
-  Serial.println("das gibts nicht");
+  Serial.println("initialising initialisation");
+
+  // setup digital pins
+  pinMode(PIN_TRIG0, INPUT);
+  pinMode(PIN_TRIG1, INPUT);
+  pinMode(PIN_LED_0, OUTPUT);
+  pinMode(PIN_LED_1, OUTPUT);
+  pinMode(PIN_SEG_LATCH, OUTPUT);
+  pinMode(PIN_SEG_CLK, OUTPUT);
+  pinMode(PIN_SEG_DATA, OUTPUT);
+
+  b[ROTARY_BUTTON].attach(PIN_ROTARY_BUTTON, INPUT_PULLUP);
+  b[SEQ_0].attach(PIN_SETTINGS_0, INPUT_PULLUP);
+  b[SEQ_1].attach(PIN_SETTINGS_1, INPUT_PULLUP);
+  b[SET_MENU].attach(PIN_SET_MENU, INPUT_PULLUP);
+  for(int i=0; i<NUM_OF_BUTTONS; i++){
+    b[i].interval(25);
+  }
+
+  initControls();
 
   for(int i=0; i<NUM_OF_STEPS; i++){
     random_steps0[i] = getRandomNote(0);
     random_steps1[i] = getRandomNote(1);
   }
-  //updateControls();
-  
+ 
   Wire.begin(); // begins I2C communication
-  attachInterrupt(digitalPinToInterrupt(PIN_TRIG0), play_tone0, CHANGE);
-  attachInterrupt(digitalPinToInterrupt(PIN_TRIG1), play_tone1, CHANGE);
-
   dac0.begin(MCP4725_0);
   dac1.begin(MCP4725_1);
-
-  Serial.println("fertig");
-
-  // TODO: löschen/ zum Testen
-  play_mode[0] = UP;
-  timer_mode[0] = TRIG_MODE; // bpm = 130;
-  picked_scale[0] = scales[3];
-  range_semitones[0] = 10;
-  possibility[0] = 900;
+  
+  attachInterrupt(digitalPinToInterrupt(PIN_TRIG0), play_tone0, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(PIN_TRIG1), play_tone1, CHANGE);
+  
+  Serial.println("init done");
 }
 
+void loop(){
+  updateControls();
+  debugVar++;
+ if(debugVar > 100){
+  debugVar = 0;
+  Serial.print("menu=");
+  Serial.print(menu_number);
+  
+  Serial.print("\tPlay_Mode=");
+  Serial.print(play_mode[0]);
+  Serial.print("\trange=");
+  Serial.print(range_semitones[0]);
+  Serial.print("\tscale=");
+  Serial.print(picked_scale[0].name);
+  Serial.print("\tpos=");
+  Serial.print(possibility[0]);
+  Serial.print("\ttimer=");
+  Serial.print(timer_mode[0]);
+  Serial.print("\tspeed=");
+  Serial.print(bpm);
+  
+ 
+  Serial.print("\trotary=");
+  Serial.print(encPosition);
+  Serial.print("\tValue=");
+  Serial.println(menuValue);
+
+ }
+  
+
+/*
+#define PLAY_MODE 0
+#define RANGE 1
+#define SCALE 2
+#define POSSIBILIY 3
+#define TIMER_MODE 4
+#define SPEED 5
+#define SHIFT 6
+*/
+}
+/*
 void loop() {
   //updateControls();
   delay(5);
 
   // TODO timer_mode ändert sich -> set-timeForNextStep
+
+  // check timer for clock mode
   if(timer_mode == CLK_MODE){
     long timeNow = millis();
     if(timeNow > timeForNextStep){
@@ -225,13 +429,13 @@ void loop() {
     }    
   }
   
-
   if(stepMarked[0] || play_mode[0] == INPUT){
-    writeVoltage(0);
     generateNextStep(0);
+    writeVoltage(0);  // TODO: maye tauschen (aktuellere Werte... vs delay wg. Ladezeit)
   }
   if(stepMarked[1] || play_mode[1] == INPUT){
-    writeVoltage(1);
     generateNextStep(1);
+    writeVoltage(1);
   } 
 }
+*/
