@@ -1,5 +1,7 @@
 #include <Arduino.h>
 
+#define SCALE_LENGTH 7
+
 struct scale{
   String name;
   byte values[12];

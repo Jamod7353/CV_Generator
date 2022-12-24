@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include "settings.h"
 
 #define SCR_NUMBER 0
 #define SCR_RAISE 1
@@ -7,17 +8,49 @@
 void printScreen(int16_t number, byte mode){
     byte out = 0;
     if(mode == SCR_NUMBER){
-/*
-  .a.
- f   b
-  .g.
- e   c
-  .d.  dp
-*/
+        if(number > 9){
+            out = 0B00000001;
+        }
+        number = number % 10;
+        switch (number)
+        {
+        case 0:
+            out |= 0B11111100;
+            break;
+        case 1:
+            out |= 0B01100000;
+            break;
+        case 2:
+            out |= 0B11011010;
+            break;
+        case 3:
+            out |= 0B11110010;
+            break;    
+        case 4:
+            out |= 0B01100110;
+            break;
+        case 5:
+            out |= 0B10110110;
+            break;
+        case 6:
+            out |= 0B10111110;
+            break;
+        case 7:
+            out |= 0B11100000;
+            break;
+        case 8:
+            out |= 0B111111110;
+            break;
+        case 9:
+            out |= 0B11110110;
+            break;
+        default:
+            break;
+        }
 
     } else if(mode == SCR_TIMER) {
         if(number == 0){
-            out = 0B10011110;
+            out = 0B10011100;
             //adefg
         } else {
             out = 0B00001100;
@@ -25,8 +58,7 @@ void printScreen(int16_t number, byte mode){
         }
     } else if(mode == SCR_RAISE){
 
-        byte num;
-        switch (num)
+        switch (number)
         {
         case 0:
             out = 0;
@@ -82,8 +114,16 @@ void printScreen(int16_t number, byte mode){
         }
     }
 
-    // TODO: write out to 7-Segment
+    // write out to 7-Segment
+    digitalWrite(PIN_SEG_LATCH, LOW);
+    shiftOut(PIN_SEG_DATA, PIN_SEG_CLK, LSBFIRST, out);
+    digitalWrite(PIN_SEG_LATCH, HIGH);
+}
 
+void clearScreen(){
+    digitalWrite(PIN_SEG_LATCH, LOW);
+    shiftOut(PIN_SEG_DATA, PIN_SEG_CLK, LSBFIRST, 0);
+    digitalWrite(PIN_SEG_LATCH, HIGH);
 }
 
 /*

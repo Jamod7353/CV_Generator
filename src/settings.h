@@ -24,8 +24,8 @@
 #define PIN_LED_1 11
 
 // 7 segment
-#define PIN_SEG_LATCH 13   // IC:Pin 12
-#define PIN_SEG_DATA 1     // IC:Pin 14 / Ard:Pin TX 
+#define PIN_SEG_LATCH A2   // IC:Pin 12
+#define PIN_SEG_DATA A3     // IC:Pin 14 / Ard:Pin TX 
 #define PIN_SEG_CLK 12     // IC:Pin 11
 
 /*
