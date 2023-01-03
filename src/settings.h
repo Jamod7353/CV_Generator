@@ -4,9 +4,7 @@
 // Input Jacks
 #define PIN_CV_INPUT_1 A1
 #define PIN_CV_INPUT_0 A0
-
-// Input Jacks
-#define PIN_TRIG0 2
+#define PIN_TRIG0 2 
 #define PIN_TRIG1 3
 
 // rotary encoder
