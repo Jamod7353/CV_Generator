@@ -65,11 +65,13 @@ scale picked_scale[2] = {scales[0], scales[0]};
 #define UP 0
 #define DOWN 1
 #define RANDOM 2
-#define SLOWLY_UP 3
-#define SLOWLY_DOWN 4
-#define SLOWLY_BOUNCE 5
-#define INPUT 6
-#define PLAYMODE_NUMBER 7
+#define RANDOM_KEEP 3
+#define RANDOM_AREA 4
+#define SLOWLY_UP 5
+#define SLOWLY_DOWN 6
+#define SLOWLY_BOUNCE 7
+#define INPUT 8
+#define PLAYMODE_NUMBER 9
 byte play_mode[2];
 boolean stepMarked[2] = {false, false};
 boolean bounceUp[2] = {true, true};
@@ -260,8 +262,34 @@ void generateNextStep(byte channel){
         value_tone[channel] = random_steps1[random_step_pointer[channel]];
       }
     }
+  }
+
+  else if(play_mode[channel] == RANDOM_KEEP){
+      if(random(0, MAX_POSSIBILITY) <= possibility[channel]){
+      if(channel == 0){
+        value_tone[channel] = getRandomNote(channel);
+      }else{
+        value_tone[channel] = getRandomNote(channel);
+      }
+    }
+  }
+
+  else if(play_mode[channel] == RANDOM_AREA){
+   random_step_pointer[channel] = (random_step_pointer[channel] + 1) % NUM_OF_STEPS;
+    if(random(0, MAX_POSSIBILITY) <= possibility[channel]){
+      if(channel == 0){
+        value_tone[channel] = random_steps0[random_step_pointer[channel]] + getRandomDiff();
+      } else {  
+        value_tone[channel] = random_steps1[random_step_pointer[channel]] + getRandomDiff();
+      }
+      if(value_tone[channel] < 0)
+        value_tone[channel] = 0;
+      if(value_tone[channel] >= range_semitones[channel])
+        value_tone[channel] = range_semitones[channel]-1; 
+    }
+  }
     
-  } else if(play_mode[channel] == UP){
+  else if(play_mode[channel] == UP){
     scale_pointer[channel] = (scale_pointer[channel] + 1) % range_semitones[channel];
     value_tone[channel] = picked_scale[channel].values[scale_pointer[channel] % picked_scale[channel].length]
         + 12 * (scale_pointer[channel] / picked_scale[channel].length);
@@ -356,15 +384,29 @@ void play_tone1(){
   }
 }
 
+void record(){
+  if(seq_0){ // TODO: testen
+    random_steps0[random_step_pointer[0]] = map(analogRead(PIN_CV_INPUT_0), 0, 1023, 0, 5*picked_scale[0].length);
+    if(play_mode[0] != RANDOM)
+      random_step_pointer[0]++;
+  }
+  if(seq_1){
+    random_steps1[random_step_pointer[1]] = map(analogRead(PIN_CV_INPUT_1), 0, 1023, 0, 5*picked_scale[1].length);
+    if(play_mode[1] != RANDOM)
+      random_step_pointer[1]++;
+  }
+}
+
 void initControls(){
   bpm = 130;
   millisToInterrupt = 462; // 60000/bpm (130 bpm)
 
-  play_mode[0] = UP;
+  // TODO: check- alle Menüpunkte (pattern-length)
+  play_mode[0] = SLOWLY_BOUNCE;
   timer_mode[0] = TRIG_MODE;
-  picked_scale[0] = scales[1];
-  range_semitones[0] = 8;
-  possibility[0] = 100;
+  picked_scale[0] = scales[4];
+  range_semitones[0] = 10;
+  possibility[0] = 10;
   
   play_mode[1] = RANDOM;
   timer_mode[1] = TRIG_MODE;
@@ -385,7 +427,7 @@ void setup() {
   pinMode(PIN_SEG_LATCH, OUTPUT);
   pinMode(PIN_SEG_CLK, OUTPUT);
   pinMode(PIN_SEG_DATA, OUTPUT);
-
+  // setup buttons
   b[ROTARY_BUTTON].attach(PIN_ROTARY_BUTTON, INPUT_PULLUP);
   b[SEQ_0].attach(PIN_SETTINGS_0, INPUT_PULLUP);
   b[SEQ_1].attach(PIN_SETTINGS_1, INPUT_PULLUP);
@@ -396,15 +438,18 @@ void setup() {
 
   initControls();
 
+  // generate random pattern
   for(int i=0; i<NUM_OF_STEPS; i++){
     random_steps0[i] = getRandomNote(0);
     random_steps1[i] = getRandomNote(1);
   }
- 
-  Wire.begin(); // begins I2C communication
+  
+  // begins I2C communication
+  Wire.begin(); 
   dac0.begin(MCP4725_0);
   dac1.begin(MCP4725_1);
   
+  // enable interrupts for trigger input
   attachInterrupt(digitalPinToInterrupt(PIN_TRIG0), play_tone0, CHANGE);
   attachInterrupt(digitalPinToInterrupt(PIN_TRIG1), play_tone1, CHANGE);
   
