@@ -488,6 +488,16 @@ void loop(){
 }
 */
 
+void loop(){
+
+  for(int i=0; i<16; i++){
+    printScreen(i, SCR_RAISE);
+  }
+
+  delay(1000);
+}
+
+/*
 void loop() {
   updateControls();
   //delay(5);
@@ -527,3 +537,4 @@ void loop() {
     clearScreen();
   }
 }
+*/

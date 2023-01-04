@@ -23,7 +23,7 @@
 
 // 7 segment
 #define PIN_SEG_LATCH A2   // IC:Pin 12
-#define PIN_SEG_DATA A3     // IC:Pin 14 / Ard:Pin TX 
+#define PIN_SEG_DATA A3     // IC:Pin 14
 #define PIN_SEG_CLK 12     // IC:Pin 11
 
 /*
