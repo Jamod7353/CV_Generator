@@ -12,7 +12,7 @@ int16_t debugVar = 0; // TODO: löschen
 
 // DAC (I2C)
 #define MCP4725_0 0x60
-#define MCP4725_1 0x61 //TODO 60 oder 62? -> löten!
+#define MCP4725_1 0x62 //TODO 60 oder 62? -> löten!
 Adafruit_MCP4725 dac0;
 Adafruit_MCP4725 dac1;
 
@@ -377,9 +377,11 @@ void play_tone0(){
   }
 }
 void play_tone1(){
+  //Serial.println("trig");
   if(timer_mode[1] == TRIG_MODE){
     if(digitalRead(PIN_TRIG1) == HIGH){
       stepMarked[1] = true;
+      
     }
   }
 }
@@ -398,8 +400,9 @@ void record(){
 }
 
 void initControls(){
-  bpm = 130;
-  millisToInterrupt = 462; // 60000/bpm (130 bpm)
+  bpm = 50;
+  //millisToInterrupt = 462; // 60000/bpm (130 bpm)
+  millisToInterrupt = 1200;
 
   // TODO: check- alle Menüpunkte (pattern-length)
   play_mode[0] = UP;
@@ -409,7 +412,7 @@ void initControls(){
   possibility[0] = 10;
   
   play_mode[1] = RANDOM;
-  timer_mode[1] = TRIG_MODE;
+  timer_mode[1] = CLK_MODE;
   picked_scale[1] = scales[1];
   range_semitones[1] = 8;
   possibility[1] = 15;
@@ -496,13 +499,13 @@ void loop() {
   // TODO timer_mode ändert sich -> set-timeForNextStep
 
   // check timer for clock mode
-  if(timer_mode == CLK_MODE){
+  if(timer_mode[0] == CLK_MODE || timer_mode[1] == CLK_MODE){
     long timeNow = millis();
     if(timeNow > timeForNextStep){
       timeForNextStep += millisToInterrupt;
-      if(timer_mode[0])
+      if(timer_mode[0] == CLK_MODE)
         stepMarked[0] = true;
-      if(timer_mode[1])
+      if(timer_mode[1] == CLK_MODE)
       stepMarked[1] = true;
     }    
   }
