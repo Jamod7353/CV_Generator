@@ -402,8 +402,8 @@ void initControls(){
   millisToInterrupt = 462; // 60000/bpm (130 bpm)
 
   // TODO: check- alle Menüpunkte (pattern-length)
-  play_mode[0] = SLOWLY_BOUNCE;
-  timer_mode[0] = TRIG_MODE;
+  play_mode[0] = UP;
+  timer_mode[0] = CLK_MODE;
   picked_scale[0] = scales[4];
   range_semitones[0] = 10;
   possibility[0] = 10;
@@ -412,7 +412,7 @@ void initControls(){
   timer_mode[1] = TRIG_MODE;
   picked_scale[1] = scales[1];
   range_semitones[1] = 8;
-  possibility[1] = 0;
+  possibility[1] = 15;
 }
 
 void setup() {
@@ -488,16 +488,7 @@ void loop(){
 }
 */
 
-void loop(){
 
-  for(int i=0; i<16; i++){
-    printScreen(i, SCR_RAISE);
-  }
-
-  delay(1000);
-}
-
-/*
 void loop() {
   updateControls();
   //delay(5);
@@ -537,4 +528,3 @@ void loop() {
     clearScreen();
   }
 }
-*/
